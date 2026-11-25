@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="kpi-grid">
+  <article class="kpi kpi-blue">
+    <div class="kpi-icon">💵</div>
+    <span class="kpi-label">Product sales</span>
+    <strong class="kpi-value" id="kpiSales">—</strong>
+    <span class="kpi-sub">Delivered order items</span>
+  </article>
+
+  <article class="kpi kpi-teal">
+    <div class="kpi-icon">🚚</div>
+    <span class="kpi-label">Freight collected</span>
+    <strong class="kpi-value" id="kpiFreight">—</strong>
+    <span class="kpi-sub">Shipping value</span>
+  </article>
+
+  <article class="kpi kpi-purple">
+    <div class="kpi-icon">🧾</div>
+    <span class="kpi-label">Delivered orders</span>
+    <strong class="kpi-value" id="kpiSalesOrders">—</strong>
+    <span class="kpi-sub">Completed transactions</span>
+  </article>
+
+  <article class="kpi kpi-amber">
+    <div class="kpi-icon">📊</div>
+    <span class="kpi-label">Revenue per order</span>
+    <strong class="kpi-value" id="kpiPerOrder">—</strong>
+    <span class="kpi-sub">Including freight</span>
+  </article>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>📈 Monthly revenue</h2>
+        <p>Product sales and freight by month</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap tall"><canvas id="monthlyChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>💳 Payment methods</h2>
+        <p>Share of payment value</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap tall"><canvas id="paymentChart"></canvas></div>
+    </div>
+  </section>
+</div>
+
+<div class="grid-2-equal">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🏷️ Top categories</h2>
+        <p>Highest revenue product categories</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap"><canvas id="categoriesChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🗺️ Sales by state</h2>
+        <p>Customer state contribution</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap"><canvas id="statesChart"></canvas></div>
+    </div>
+  </section>
+</div>
+
+<div class="grid-2-equal">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🏆 Top products</h2>
+        <p>By product sales value</p>
+      </div>
+    </div>
+    <div class="panel-body flush">
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>Product</th><th>Category</th><th>Sales</th></tr>
+          </thead>
+          <tbody id="topProductsBody">
+            <tr><td colspan="3"><div class="empty">Loading products…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🔮 Sales forecast</h2>
+        <p>Next three months from the trained regression model</p>
+      </div>
+    </div>
+    <div class="panel-body flush">
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>Month</th><th>Predicted sales</th></tr>
+          </thead>
+          <tbody id="salesForecastBody">
+            <tr><td colspan="2"><div class="empty">Loading forecast…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>🧪 Forecast model comparison</h2>
+      <p>Error scores on the held-out test months — lower is better</p>
+    </div>
+  </div>
+  <div class="panel-body flush">
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr><th>Model</th><th>MAE</th><th>RMSE</th><th>Verdict</th></tr>
+        </thead>
+        <tbody id="forecastModelsBody">
+          <tr><td colspan="4"><div class="empty">Loading model scores…</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  withLoader(async () => {
+    const data = await api("/api/sales");
+    const kpis = data.kpis;
+
+    setText("kpiSales", money(kpis.total_sales));
+    setText("kpiFreight", money(kpis.freight));
+    setText("kpiSalesOrders", num(kpis.orders));
+    setText(
+      "kpiPerOrder",
+      money(kpis.orders ? (kpis.total_sales + kpis.freight) / kpis.orders : 0, 2)
+    );
+
+    const monthly = data.monthly || [];
+    barChart(
+      "monthlyChart",
+      monthly.map((row) => monthLabel(row.month)),
+      [
+        {
+          label: "Product sales",
+          data: monthly.map((row) => row.product_sales),
+          color: "#2563eb",
+        },
+        {
+          label: "Freight",
+          data: monthly.map((row) => row.freight_value),
+          color: "#a5b4fc",
+        },
+      ],
+      { currency: true, legend: true }
+    );
+
+    const payments = data.payments || [];
+    doughnutChart(
+      "paymentChart",
+      payments.map((row) => row.payment_type),
+      payments.map((row) => row.payment_value),
+      { colors: ["#2563eb", "#0ea5e9", "#7c3aed", "#f59e0b", "#e11d48"] }
+    );
+
+    const categories = (data.top_categories || []).slice(0, 8);
+    barChart(
+      "categoriesChart",
+      categories.map((row) => prettyLabel(row.product_category_name_english)),
+      [{
+        label: "Product sales",
+        data: categories.map((row) => row.product_sales),
+        colors: categories.map((_, index) => hexToRgba(PALETTE[index % PALETTE.length], 0.82)),
+      }],
+      { currency: true, horizontal: true, legend: false }
+    );
+
+    const states = (data.states || []).slice(0, 10);
+    barChart(
+      "statesChart",
+      states.map((row) => row.customer_state),
+      [{
+        label: "Product sales",
+        data: states.map((row) => row.product_sales),
+        color: "#0f766e",
+      }],
+      { currency: true, legend: false }
+    );
+
+    fillTable(
+      "topProductsBody",
+      data.top_products || [],
+      (row) => `
+        <tr>
+          <td class="mono" title="${escapeHtml(row.product_id)}">${escapeHtml(String(row.product_id).slice(0, 12))}…</td>
+          <td>${escapeHtml(prettyLabel(row.product_category_name))}</td>
+          <td><strong>${money(row.product_sales)}</strong></td>
+        </tr>`,
+      "No product data available."
+    );
+
+    fillTable(
+      "salesForecastBody",
+      data.forecast || [],
+      (row) => `
+        <tr>
+          <td><strong>${escapeHtml(monthLabel(row.month))}</strong></td>
+          <td>${money(row.predicted_sales)}</td>
+        </tr>`,
+      "No sales forecast available."
+    );
+
+    const best = (data.forecast_models || [])
+      .slice()
+      .sort((a, b) => Number(a.RMSE) - Number(b.RMSE))[0];
+
+    fillTable(
+      "forecastModelsBody",
+      data.forecast_models || [],
+      (row) => `
+        <tr>
+          <td><strong>${escapeHtml(row.Model)}</strong></td>
+          <td>${money(row.MAE)}</td>
+          <td>${money(row.RMSE)}</td>
+          <td>${
+            best && row.Model === best.Model
+              ? '<span class="badge badge-green">Best model</span>'
+              : '<span class="badge badge-slate">Baseline</span>'
+          }</td>
+        </tr>`,
+      "No model comparison available."
+    );
+  });
+</script>
+{% endblock %}

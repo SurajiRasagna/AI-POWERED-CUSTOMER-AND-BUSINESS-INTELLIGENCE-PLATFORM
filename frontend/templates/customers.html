@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="kpi-grid">
+  <article class="kpi kpi-purple">
+    <div class="kpi-icon">👥</div>
+    <span class="kpi-label">Customers</span>
+    <strong class="kpi-value" id="kpiCustomersTotal">—</strong>
+    <span class="kpi-sub">Unique shoppers analysed</span>
+  </article>
+
+  <article class="kpi kpi-teal">
+    <div class="kpi-icon">🔁</div>
+    <span class="kpi-label">Repeat customers</span>
+    <strong class="kpi-value" id="kpiRepeat">—</strong>
+    <span class="kpi-sub">More than one order</span>
+  </article>
+
+  <article class="kpi kpi-blue">
+    <div class="kpi-icon">💎</div>
+    <span class="kpi-label">Average customer value</span>
+    <strong class="kpi-value" id="kpiAvgClv">—</strong>
+    <span class="kpi-sub">Historical lifetime value</span>
+  </article>
+
+  <article class="kpi kpi-amber">
+    <div class="kpi-icon">⭐</div>
+    <span class="kpi-label">High-value customers</span>
+    <strong class="kpi-value" id="kpiHighValue">—</strong>
+    <span class="kpi-sub">Top CLV segment</span>
+  </article>
+</div>
+
+<div class="grid-2-equal">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🧩 RFM segments</h2>
+        <p>Recency, frequency and monetary value</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap"><canvas id="rfmChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>💎 Lifetime value segments</h2>
+        <p>Revenue contribution by customer value band</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap"><canvas id="clvChart"></canvas></div>
+    </div>
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🏆 Top customers by lifetime value</h2>
+        <p>Highest historical spend</p>
+      </div>
+    </div>
+    <div class="panel-body flush">
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>Customer</th><th>Spend</th><th>Orders</th><th>Recency</th><th>Segment</th></tr>
+          </thead>
+          <tbody id="topClvBody">
+            <tr><td colspan="5"><div class="empty">Loading customers…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <div>
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>⚠️ Churn risk</h2>
+          <p>Predicted 90-day churn probability bands</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap short"><canvas id="churnChart"></canvas></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>🤖 Churn model scores</h2>
+          <p>Held-out test performance</p>
+        </div>
+      </div>
+      <div class="panel-body flush">
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr><th>Model</th><th>Accuracy</th><th>Recall</th><th>ROC AUC</th></tr>
+            </thead>
+            <tbody id="churnModelsBody">
+              <tr><td colspan="4"><div class="empty">Loading model scores…</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const percent = (value) => `${(Number(value) * 100).toFixed(1)}%`;
+
+  withLoader(async () => {
+    const data = await api("/api/customers");
+    const kpis = data.kpis;
+
+    setText("kpiCustomersTotal", num(kpis.customers));
+    setText("kpiRepeat", num(kpis.repeat_customers));
+    setText("kpiAvgClv", money(kpis.average_clv, 2));
+    setText("kpiHighValue", num(kpis.high_value_customers));
+
+    const rfm = data.rfm_segments || [];
+    doughnutChart(
+      "rfmChart",
+      rfm.map((row) => row.Customer_Segment),
+      rfm.map((row) => row.Customer_Count),
+      { colors: ["#7c3aed", "#0ea5e9", "#10b981", "#f59e0b", "#e11d48"] }
+    );
+
+    const clv = data.clv_segments || [];
+    barChart(
+      "clvChart",
+      clv.map((row) => row.customer_segment),
+      [{
+        label: "Revenue",
+        data: clv.map((row) => row.total_revenue),
+        colors: clv.map((row) => {
+          const key = String(row.customer_segment).toLowerCase();
+          if (key.includes("high")) return "rgba(16, 185, 129, 0.85)";
+          if (key.includes("medium")) return "rgba(14, 165, 233, 0.85)";
+          return "rgba(148, 163, 184, 0.85)";
+        }),
+      }],
+      { currency: true, legend: false }
+    );
+
+    const churn = data.churn_risk || [];
+    doughnutChart(
+      "churnChart",
+      churn.map((row) => row.risk_level),
+      churn.map((row) => row.count),
+      { colors: ["#10b981", "#f59e0b", "#f43f5e"] }
+    );
+
+    fillTable(
+      "topClvBody",
+      data.top_clv_customers || [],
+      (row) => `
+        <tr>
+          <td class="mono" title="${escapeHtml(row.customer_unique_id)}">${escapeHtml(String(row.customer_unique_id).slice(0, 12))}…</td>
+          <td><strong>${money(row.total_spending)}</strong></td>
+          <td>${num(row.total_orders)}</td>
+          <td>${num(row.recency_days)} days</td>
+          <td><span class="badge badge-purple">${escapeHtml(row.customer_segment)}</span></td>
+        </tr>`,
+      "No customer value data available."
+    );
+
+    fillTable(
+      "churnModelsBody",
+      data.churn_models || [],
+      (row) => `
+        <tr>
+          <td><strong>${escapeHtml(row.Model)}</strong></td>
+          <td>${percent(row.Accuracy)}</td>
+          <td>${percent(row.Recall)}</td>
+          <td>${percent(row["ROC AUC"])}</td>
+        </tr>`,
+      "No churn model data available."
+    );
+  });
+</script>
+{% endblock %}

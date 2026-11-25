@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{{ page_title }} · {{ app_name }}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Crect x='7' y='16' width='4' height='9' rx='1' fill='white'/%3E%3Crect x='14' y='10' width='4' height='15' rx='1' fill='white'/%3E%3Crect x='21' y='13' width='4' height='12' rx='1' fill='white'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div id="pageLoader"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">📊</div>
+        <div>
+          <h2>AI Insights</h2>
+          <p>Business Intelligence</p>
+        </div>
+      </div>
+
+      <div class="nav-section-label">Workspace</div>
+
+      <nav>
+        {% for item in nav_items %}
+          <a class="nav-link {% if request.endpoint == item.endpoint %}active{% endif %}"
+             href="{{ url_for(item.endpoint) }}">
+            <span class="nav-icon">{{ item.icon }}</span>
+            <span>{{ item.label }}</span>
+          </a>
+        {% endfor %}
+
+        {% if current_user and current_user.is_admin %}
+          <div class="nav-section-label">Administration</div>
+          <a class="nav-link {% if request.endpoint == admin_nav_item.endpoint %}active{% endif %}"
+             href="{{ url_for(admin_nav_item.endpoint) }}">
+            <span class="nav-icon">{{ admin_nav_item.icon }}</span>
+            <span>{{ admin_nav_item.label }}</span>
+          </a>
+        {% endif %}
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-card">
+          <div class="avatar">{{ current_user.initials }}</div>
+          <div class="user-meta">
+            <strong title="{{ current_user.name }}">{{ current_user.name }}</strong>
+            <span>{{ current_user.role }}</span>
+          </div>
+          <form class="logout-form" method="post" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="logout-btn" type="submit" title="Sign out" aria-label="Sign out">⏻</button>
+          </form>
+        </div>
+
+        <div class="sidebar-note">
+          Machine-learning forecasts refresh instantly when new demand
+          figures are entered.
+        </div>
+      </div>
+    </aside>
+
+    <div class="sidebar-scrim" id="sidebarScrim"></div>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn" id="menuBtn" type="button" aria-label="Toggle navigation"
+                aria-controls="sidebar" aria-expanded="false">☰</button>
+        <div class="topbar-title">
+          <h1>{{ page_title }}</h1>
+          <p>{{ page_subtitle }}</p>
+        </div>
+        <div class="topbar-meta">
+          <span class="live-pill">Live data</span>
+        </div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flashes">
+            {% for category, message in messages %}
+              <div class="flash flash-{{ category }}">
+                {% if category == 'success' %}✓{% elif category == 'error' %}!{% else %}i{% endif %}
+                <span>{{ message }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <div class="page">
+        {% block content %}{% endblock %}
+      </div>
+
+      <footer class="footer">
+        <strong>{{ app_name }}</strong> · Python, Flask, Pandas and Machine Learning<br>
+        © {{ current_year }} · Data-driven decisions for e-commerce operations
+      </footer>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

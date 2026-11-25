@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="kpi-grid">
+  <article class="kpi kpi-teal">
+    <div class="kpi-icon">😊</div>
+    <span class="kpi-label">Positive reviews</span>
+    <strong class="kpi-value" id="kpiPositive">—</strong>
+    <span class="kpi-sub">Delighted customers</span>
+  </article>
+
+  <article class="kpi kpi-amber">
+    <div class="kpi-icon">😐</div>
+    <span class="kpi-label">Neutral reviews</span>
+    <strong class="kpi-value" id="kpiNeutral">—</strong>
+    <span class="kpi-sub">Mixed experience</span>
+  </article>
+
+  <article class="kpi kpi-rose">
+    <div class="kpi-icon">😞</div>
+    <span class="kpi-label">Negative reviews</span>
+    <strong class="kpi-value" id="kpiNegative">—</strong>
+    <span class="kpi-sub">Needs attention</span>
+  </article>
+
+  <article class="kpi kpi-blue">
+    <div class="kpi-icon">💬</div>
+    <span class="kpi-label">Reviews analysed</span>
+    <strong class="kpi-value" id="kpiReviews">—</strong>
+    <span class="kpi-sub">Classified by the NLP model</span>
+  </article>
+</div>
+
+<div class="grid-2-equal">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>💬 Sentiment distribution</h2>
+        <p>Predicted label across all reviews</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap"><canvas id="sentimentPageChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>⭐ Review ratings</h2>
+        <p>Star ratings submitted by customers</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap"><canvas id="ratingsChart"></canvas></div>
+    </div>
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>📝 Latest customer reviews</h2>
+      <p>Most recent comments with their predicted sentiment</p>
+    </div>
+  </div>
+  <div class="panel-body flush">
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr><th>Score</th><th>Sentiment</th><th>Date</th><th>Review</th></tr>
+        </thead>
+        <tbody id="recentReviewsBody">
+          <tr><td colspan="4"><div class="empty">Loading reviews…</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  withLoader(async () => {
+    const data = await api("/api/sentiment");
+    const kpis = data.kpis;
+
+    setText("kpiPositive", num(kpis.positive));
+    setText("kpiNeutral", num(kpis.neutral));
+    setText("kpiNegative", num(kpis.negative));
+    setText("kpiReviews", num(kpis.total));
+
+    const distribution = data.distribution || [];
+    doughnutChart(
+      "sentimentPageChart",
+      distribution.map((row) => row.sentiment),
+      distribution.map((row) => row.review_count),
+      {
+        colors: distribution.map((row) => {
+          const key = String(row.sentiment).toLowerCase();
+          if (key.includes("positive")) return "#10b981";
+          if (key.includes("negative")) return "#f43f5e";
+          return "#f59e0b";
+        }),
+      }
+    );
+
+    const ratings = data.ratings || [];
+    barChart(
+      "ratingsChart",
+      ratings.map((row) => `${row.review_score} star`),
+      [{
+        label: "Reviews",
+        data: ratings.map((row) => row.reviews),
+        colors: ratings.map((row) => {
+          if (row.review_score >= 4) return "rgba(16, 185, 129, 0.85)";
+          if (row.review_score === 3) return "rgba(245, 158, 11, 0.85)";
+          return "rgba(244, 63, 94, 0.85)";
+        }),
+      }],
+      { legend: false }
+    );
+
+    fillTable(
+      "recentReviewsBody",
+      data.recent || [],
+      (row) => `
+        <tr>
+          <td><strong>${"★".repeat(Number(row.review_score) || 0)}</strong></td>
+          <td><span class="badge ${sentimentBadge(row.sentiment)}">${escapeHtml(row.sentiment)}</span></td>
+          <td>${escapeHtml(row.date)}</td>
+          <td class="wrap">${escapeHtml(row.message)}</td>
+        </tr>`,
+      "No review text available."
+    );
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="kpi-grid">
+  <article class="kpi kpi-blue">
+    <div class="kpi-icon">👥</div>
+    <span class="kpi-label">Total accounts</span>
+    <strong class="kpi-value">{{ stats.total }}</strong>
+    <span class="kpi-sub">Registered users</span>
+  </article>
+
+  <article class="kpi kpi-teal">
+    <div class="kpi-icon">✅</div>
+    <span class="kpi-label">Active accounts</span>
+    <strong class="kpi-value">{{ stats.active }}</strong>
+    <span class="kpi-sub">Can sign in</span>
+  </article>
+
+  <article class="kpi kpi-purple">
+    <div class="kpi-icon">🛡️</div>
+    <span class="kpi-label">Active admins</span>
+    <strong class="kpi-value">{{ stats.admins }}</strong>
+    <span class="kpi-sub">Full access</span>
+  </article>
+</div>
+
+<div class="notice">
+  <strong>Roles:</strong>
+  <span class="badge badge-purple">Admin</span> manages users and everything else ·
+  <span class="badge badge-blue">Analyst</span> views analytics and runs predictions ·
+  <span class="badge badge-slate">Viewer</span> read-only access.
+  New sign-ups join as analysts; promote them here.
+</div>
+
+<section class="panel" style="margin-top:18px">
+  <div class="panel-head">
+    <div>
+      <h2>🛡️ Team members</h2>
+      <p>{{ stats.total }} account(s) · changes take effect immediately</p>
+    </div>
+  </div>
+  <div class="panel-body flush">
+    <div class="table-wrap" style="max-height:none">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Joined</th>
+            <th>Last sign-in</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for account in accounts %}
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div class="avatar" style="width:32px;height:32px;font-size:11px">{{ account.initials }}</div>
+                  <div>
+                    <strong>{{ account.name }}</strong>
+                    {% if account.id == current_user.id %}
+                      <span class="badge badge-blue" style="margin-left:4px">you</span>
+                    {% endif %}
+                    <div class="small muted">{{ account.email }}</div>
+                  </div>
+                </div>
+              </td>
+
+              <td>
+                <form class="inline-form" method="post"
+                      action="{{ url_for('admin.update_role', user_id=account.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <select name="role" aria-label="Role for {{ account.name }}">
+                    {% for role in roles %}
+                      <option value="{{ role }}" {% if account.role == role %}selected{% endif %}>
+                        {{ role|capitalize }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+                </form>
+              </td>
+
+              <td>
+                {% if account.is_active %}
+                  <span class="badge badge-green">Active</span>
+                {% else %}
+                  <span class="badge badge-rose">Deactivated</span>
+                {% endif %}
+              </td>
+
+              <td>{{ account.created_at.strftime('%d %b %Y') }}</td>
+
+              <td>
+                {% if account.last_login_at %}
+                  {{ account.last_login_at.strftime('%d %b %Y %H:%M') }}
+                {% else %}
+                  <span class="muted">Never</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if account.id == current_user.id %}
+                  <span class="small muted">Current session</span>
+                {% else %}
+                  <form method="post" action="{{ url_for('admin.toggle_user', user_id=account.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-ghost btn-sm" type="submit">
+                      {% if account.is_active %}Deactivate{% else %}Activate{% endif %}
+                    </button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

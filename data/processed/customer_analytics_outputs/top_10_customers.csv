@@ -1,0 +1,11 @@
+customer_unique_id,Recency,Frequency,Monetary,R_Score,F_Score,M_Score,RFM_Score,Customer_Segment
+0a0a92112bd4c708ca5fde585afaa872,334,1,13440.0,2,1,5,215,At Risk / Inactive
+da122df9eeddfedc1dc1f5349a1a690c,515,2,7388.0,1,5,5,155,Loyal Customers
+763c8b1c9c68a0229c42c9fc6f662b93,46,1,7160.0,5,3,5,535,Recent Customers
+dc4802a71eae9be1dd28f5d788ceb526,563,1,6735.0,1,5,5,155,Loyal Customers
+459bef486812aa25204be022145caa62,35,1,6729.0,5,2,5,525,Recent Customers
+ff4159b92c40ebe40454e3e6a7c35ed6,462,1,6499.0,1,5,5,155,Loyal Customers
+4007669dec559734d6f53e029e360987,279,1,5934.6,2,2,5,225,At Risk / Inactive
+eebb5dda148d3893cdaf5b5ca3040ccb,498,1,4690.0,1,5,5,155,Loyal Customers
+48e1ac109decbb87765a3eade6854098,69,1,4590.0,5,2,5,525,Recent Customers
+a229eba70ec1c2abef51f04987deb7a5,90,1,4400.0,5,4,5,545,Champions

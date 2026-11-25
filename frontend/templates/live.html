@@ -1,0 +1,623 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="kpi-grid">
+  <article class="kpi kpi-teal">
+    <div class="kpi-icon">🤖</div>
+    <span class="kpi-label">Model</span>
+    <strong class="kpi-value" style="font-size:20px">Random Forest</strong>
+    <span class="kpi-sub" id="liveModelProducts">— trained products</span>
+  </article>
+
+  <article class="kpi kpi-blue">
+    <div class="kpi-icon">🗓️</div>
+    <span class="kpi-label">Last trained</span>
+    <strong class="kpi-value" id="liveTrainedAt" style="font-size:20px">—</strong>
+    <span class="kpi-sub">Model file timestamp</span>
+  </article>
+
+  <article class="kpi kpi-purple">
+    <div class="kpi-icon">📊</div>
+    <span class="kpi-label">Data through</span>
+    <strong class="kpi-value" id="liveDataThrough" style="font-size:20px">—</strong>
+    <span class="kpi-sub">Latest month available</span>
+  </article>
+
+  <article class="kpi kpi-amber">
+    <div class="kpi-icon">🧠</div>
+    <span class="kpi-label">Features</span>
+    <strong class="kpi-value" style="font-size:20px">6 inputs</strong>
+    <span class="kpi-sub" id="liveFeatures">—</span>
+  </article>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>🧾 Current demand inputs</h2>
+      <p>Enter the latest three months of unit sales, then predict.</p>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div class="form-grid form-grid-5">
+      <div class="field field-span">
+        <label for="liveProduct">Product</label>
+        <select id="liveProduct"></select>
+      </div>
+
+      <div class="field">
+        <label for="lag3">3 months ago — lag_3</label>
+        <input id="lag3" type="number" min="0" step="1" value="0">
+      </div>
+
+      <div class="field">
+        <label for="lag2">2 months ago — lag_2</label>
+        <input id="lag2" type="number" min="0" step="1" value="0">
+      </div>
+
+      <div class="field">
+        <label for="lag1">Latest month — lag_1</label>
+        <input id="lag1" type="number" min="0" step="1" value="0">
+      </div>
+
+      <div class="field">
+        <label for="forecastMonth">Forecast month</label>
+        <input id="forecastMonth" type="month">
+      </div>
+
+      <div class="field">
+        <label for="timeIndex">time_index</label>
+        <input id="timeIndex" type="number" min="0" step="1" disabled>
+      </div>
+    </div>
+
+    <label class="checkbox-row" for="tiOverride">
+      <input id="tiOverride" type="checkbox">
+      <span>Override the automatically calculated <code>time_index</code></span>
+    </label>
+
+    <div class="form-actions">
+      <button class="btn btn-teal" id="predictBtn" type="button">🚀 Predict demand</button>
+      <span class="small muted" id="predictHint">Prediction is logged for the audit trail.</span>
+    </div>
+
+    {% if current_user.role == 'viewer' %}
+      <div class="notice notice-warn" style="margin-top:14px">
+        Your viewer account is read-only. Ask an admin to upgrade you to
+        <strong>analyst</strong> to run predictions.
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<section id="resultSection" class="hidden">
+  <div class="result-header">
+    <h2 id="resultTitle">Prediction</h2>
+    <span class="result-meta" id="resultMeta"></span>
+  </div>
+
+  <div class="kpi-grid">
+    <article class="kpi kpi-teal">
+      <div class="kpi-icon">📦</div>
+      <span class="kpi-label">Predicted demand</span>
+      <strong class="kpi-value" id="kpiPrediction">—</strong>
+      <span class="kpi-sub" id="kpiPredictionMonth">—</span>
+    </article>
+
+    <article class="kpi kpi-blue">
+      <div class="kpi-icon">🎯</div>
+      <span class="kpi-label">Demand signal</span>
+      <strong class="kpi-value" id="kpiSignal" style="font-size:21px">—</strong>
+      <span class="kpi-sub" id="kpiSignalSub">—</span>
+    </article>
+
+    <article class="kpi kpi-amber">
+      <div class="kpi-icon">🛡️</div>
+      <span class="kpi-label">Safety stock · 95%</span>
+      <strong class="kpi-value" id="kpiSafety">—</strong>
+      <span class="kpi-sub" id="kpiSafetySub">—</span>
+    </article>
+
+    <article class="kpi kpi-purple">
+      <div class="kpi-icon">📊</div>
+      <span class="kpi-label">Reorder point</span>
+      <strong class="kpi-value" id="kpiReorder">—</strong>
+      <span class="kpi-sub">Forecast plus safety stock</span>
+    </article>
+  </div>
+
+  <div class="grid-2">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>📈 Actual vs live forecast</h2>
+          <p>Last 12 months of history and the next three months</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas id="liveChart"></canvas></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>🔮 Next three months</h2>
+          <p>Recursive forecast from the selected month</p>
+        </div>
+      </div>
+      <div class="panel-body flush">
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr><th>Month</th><th>Predicted units</th></tr>
+            </thead>
+            <tbody id="liveForecastBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="notice" id="resultNote"></div>
+</section>
+
+<div class="grid-2-equal">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🕘 Recent predictions</h2>
+        <p>Audit trail of predictions you are allowed to see</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="refreshHistory" type="button">Refresh</button>
+    </div>
+    <div class="panel-body flush">
+      <div class="table-wrap" style="max-height:360px">
+        <table class="data">
+          <thead>
+            <tr><th>Month</th><th>Product</th><th>Units</th><th>Signal</th><th>By</th></tr>
+          </thead>
+          <tbody id="predictionHistoryBody">
+            <tr><td colspan="5"><div class="empty">Loading history…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>📥 Score a demand file</h2>
+        <p>CSV with product_id, month, quantity_sold</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <label class="dropzone" id="batchDrop" for="batchFile">
+        <strong id="batchDropTitle">Choose a CSV or drop it here</strong>
+        <p id="batchDropHint">Latest three rows per product are scored.</p>
+        <input id="batchFile" type="file" accept=".csv">
+      </label>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" id="batchBtn" type="button" disabled>
+          Score file
+        </button>
+        <button class="btn btn-ghost btn-sm" id="templateBtn" type="button">
+          Download template
+        </button>
+        <button class="btn btn-ghost btn-sm hidden" id="batchDownload" type="button">
+          Download results
+        </button>
+      </div>
+
+      <div id="batchSummary" class="small muted" style="margin-top:10px"></div>
+
+      <div class="table-wrap" style="max-height:280px;margin-top:10px">
+        <table class="data">
+          <thead>
+            <tr><th>Product</th><th>Status</th><th>Forecast</th><th>Units</th></tr>
+          </thead>
+          <tbody id="batchBody">
+            <tr><td colspan="4"><div class="empty">No file scored yet.</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const isViewer = {{ 'true' if current_user.role == 'viewer' else 'false' }};
+
+  let liveProducts = [];
+  let liveHistory = [];
+  let batchRows = [];
+
+  const dom = (id) => document.getElementById(id);
+
+  function monthValue(monthString, offset) {
+    const [year, month] = String(monthString || "").split("-").map(Number);
+    const date = new Date(year, month - 1 + offset, 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function selectedProduct() {
+    return liveProducts.find((row) => row.product_id === dom("liveProduct").value);
+  }
+
+  function productLabel(product) {
+    return `${prettyLabel(product.category)} · last ${num(product.last_units)} units`;
+  }
+
+  function applyProductDefaults() {
+    const product = selectedProduct();
+    if (!product) return;
+
+    const history = liveHistory.filter(
+      (row) => row.product_id === product.product_id
+    ).slice(-3);
+
+    if (history.length === 3) {
+      dom("lag3").value = Math.round(history[0].quantity_sold);
+      dom("lag2").value = Math.round(history[1].quantity_sold);
+      dom("lag1").value = Math.round(history[2].quantity_sold);
+    }
+
+    const next = monthValue(product.last_month, 1);
+    const monthInput = dom("forecastMonth");
+    monthInput.min = next;
+    monthInput.max = monthValue(product.last_month, 6);
+    monthInput.value = next;
+
+    updateTimeIndex();
+
+    if (!isViewer) {
+      dom("predictHint").textContent =
+        `Latest data month: ${monthLabel(product.last_month)}.`;
+    }
+  }
+
+  function updateTimeIndex() {
+    const product = selectedProduct();
+    const month = dom("forecastMonth").value;
+
+    if (!product || !month) return;
+
+    const [productYear, productMonth] = product.last_month.split("-").map(Number);
+    const [year, monthNumber] = month.split("-").map(Number);
+    const ahead = Math.max(0, (year - productYear) * 12 + (monthNumber - productMonth));
+
+    dom("timeIndex").value = product.months + ahead;
+  }
+
+  function renderPrediction(result) {
+    dom("resultSection").classList.remove("hidden");
+
+    const label = monthLabel(result.forecast[0]?.forecast_month);
+    setText("kpiPrediction", `${num(result.prediction)} units`);
+    setText("kpiPredictionMonth", label);
+    setText("kpiSignal", result.signal);
+    setText("kpiSignalSub", `Forecast ${result.ratio}× recent average`);
+    setText("kpiSafety", `${num(result.safety_stock)} units`);
+    setText(
+      "kpiSafetySub",
+      result.error_std > 0
+        ? `Residual std ${decimal(result.error_std)} units`
+        : "Fallback: forecast is the reorder point"
+    );
+    setText("kpiReorder", `${num(result.reorder_point)} units`);
+
+    setText(
+      "resultTitle",
+      `Prediction — ${monthLabel(result.forecast[0]?.forecast_month)}`
+    );
+
+    const product = selectedProduct();
+    dom("resultMeta").textContent = [
+      product ? productLabel(product) : result.product.product_id,
+      `time_index ${result.time_index}`,
+      `forecast month ${monthLabel(result.forecast[0]?.forecast_month)}`,
+    ].join(" · ");
+
+    const history = liveHistory
+      .filter((row) => row.product_id === result.product.product_id)
+      .slice(-12);
+
+    const labels = [
+      ...history.map((row) => monthLabel(row.month)),
+      ...result.forecast.map((row) => monthLabel(row.forecast_month)),
+    ];
+
+    const actual = [
+      ...history.map((row) => row.quantity_sold),
+      ...result.forecast.map(() => null),
+    ];
+
+    const projected = history.map(() => null);
+    if (history.length) {
+      projected[history.length - 1] = history[history.length - 1].quantity_sold;
+    }
+    result.forecast.forEach((row) => projected.push(row.predicted_quantity));
+
+    lineChart(
+      "liveChart",
+      labels,
+      [
+        { label: "Actual demand", data: actual, color: "#0f766e", fill: false },
+        { label: "Live forecast", data: projected, color: "#f97316", fill: false },
+      ],
+      { legend: true }
+    );
+
+    fillTable(
+      "liveForecastBody",
+      result.forecast,
+      (row) => `
+        <tr>
+          <td><strong>${escapeHtml(monthLabel(row.forecast_month))}</strong></td>
+          <td>${num(row.predicted_quantity)} units</td>
+        </tr>`
+    );
+
+    dom("resultNote").innerHTML = `
+      <strong>How to read this:</strong> safety stock uses 1.65 × the model's
+      test-period error (${decimal(result.error_std)} units). Reorder point =
+      forecast + safety stock. Predictions are clipped at zero.
+    `;
+
+    dom("resultSection").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function loadHistory() {
+    const data = await api("/api/predictions?limit=20");
+    fillTable(
+      "predictionHistoryBody",
+      data.predictions,
+      (row) => `
+        <tr>
+          <td>${escapeHtml(monthLabel(row.forecast_month))}</td>
+          <td class="mono" title="${escapeHtml(row.product_id)}">${escapeHtml(
+            String(row.product_id).slice(0, 12)
+          )}…</td>
+          <td>${num(row.predicted_quantity)}</td>
+          <td><span class="badge ${signalBadge(row.signal)}">${escapeHtml(
+            row.signal
+          )}</span></td>
+          <td>${escapeHtml(row.created_by)}</td>
+        </tr>`,
+      "No predictions logged yet."
+    );
+  }
+
+  withLoader(async () => {
+    const [productResponse, demandResponse] = await Promise.all([
+      api("/api/products"),
+      api("/api/demand"),
+    ]);
+
+    liveProducts = productResponse.products || [];
+    liveHistory = demandResponse.history || [];
+
+    const model = productResponse.model;
+    setText("liveModelProducts", `${model.product_count} trained products`);
+    setText("liveTrainedAt", model.trained_at);
+    setText("liveDataThrough", model.data_through);
+    setText("liveFeatures", model.features.join(" · "));
+
+    const select = dom("liveProduct");
+    select.innerHTML = liveProducts
+      .map(
+        (product) =>
+          `<option value="${escapeHtml(product.product_id)}" title="${escapeHtml(
+            product.product_id
+          )}">${escapeHtml(productLabel(product))}</option>`
+      )
+      .join("");
+
+    if (liveProducts.length) {
+      applyProductDefaults();
+    }
+
+    select.addEventListener("change", applyProductDefaults);
+    dom("forecastMonth").addEventListener("change", updateTimeIndex);
+
+    await loadHistory();
+  });
+
+  dom("tiOverride").addEventListener("change", (event) => {
+    dom("timeIndex").disabled = !event.target.checked;
+    if (event.target.checked) updateTimeIndex();
+  });
+
+  dom("refreshHistory").addEventListener("click", () =>
+    withLoader(loadHistory)
+  );
+
+  dom("predictBtn").addEventListener("click", async () => {
+    const productId = dom("liveProduct").value;
+    const month = dom("forecastMonth").value;
+
+    if (!productId || !month) {
+      toast("Pick a product and forecast month first.", "error");
+      return;
+    }
+
+    if (isViewer) {
+      toast("Viewer accounts are read-only.", "error");
+      return;
+    }
+
+    const payload = {
+      product_id: productId,
+      lag_1: Number(dom("lag1").value),
+      lag_2: Number(dom("lag2").value),
+      lag_3: Number(dom("lag3").value),
+      forecast_month: month,
+    };
+
+    if (dom("tiOverride").checked) {
+      payload.time_index = Number(dom("timeIndex").value);
+    }
+
+    const button = dom("predictBtn");
+    button.disabled = true;
+    button.textContent = "Predicting…";
+
+    try {
+      const result = await withLoader(() =>
+        api("/api/predict/demand", { method: "POST", body: payload })
+      );
+      renderPrediction(result);
+      await withLoader(loadHistory);
+    } finally {
+      button.disabled = false;
+      button.textContent = "🚀 Predict demand";
+    }
+  });
+
+  /* ---------- Batch file ---------- */
+
+  const fileInput = dom("batchFile");
+  const drop = dom("batchDrop");
+
+  function setBatchSelection(file) {
+    dom("batchBtn").disabled = !file;
+    dom("batchDropTitle").textContent = file
+      ? file.name
+      : "Choose a CSV or drop it here";
+    dom("batchDropHint").textContent = file
+      ? `${(file.size / 1024).toFixed(1)} KB selected`
+      : "Latest three rows per product are scored.";
+  }
+
+  fileInput.addEventListener("change", () => {
+    setBatchSelection(fileInput.files[0]);
+  });
+
+  ["dragenter", "dragover"].forEach((event) =>
+    drop.addEventListener(event, (e) => {
+      e.preventDefault();
+      drop.classList.add("is-drag");
+    })
+  );
+
+  ["dragleave", "drop"].forEach((event) =>
+    drop.addEventListener(event, (e) => {
+      e.preventDefault();
+      drop.classList.remove("is-drag");
+    })
+  );
+
+  drop.addEventListener("drop", (event) => {
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      toast("Choose a CSV file (.csv).", "error");
+      return;
+    }
+
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    fileInput.files = transfer.files;
+    setBatchSelection(file);
+  });
+
+  dom("templateBtn").addEventListener("click", () => {
+    const product = selectedProduct();
+    if (!product) return;
+
+    const history = liveHistory
+      .filter((row) => row.product_id === product.product_id)
+      .slice(-3);
+
+    const rows = history.length
+      ? history.map((row) => [
+          product.product_id,
+          row.month,
+          Math.round(Number(row.quantity_sold) || 0),
+        ])
+      : [[product.product_id, product.last_month, Math.round(Number(dom("lag1").value) || 0)]];
+
+    downloadCsv(
+      "live_demand_template.csv",
+      ["product_id", "month", "quantity_sold"],
+      rows
+    );
+  });
+
+  dom("batchBtn").addEventListener("click", async () => {
+    const file = fileInput.files[0];
+    if (!file) {
+      toast("Choose a CSV file first.", "error");
+      return;
+    }
+
+    if (isViewer) {
+      toast("Viewer accounts are read-only.", "error");
+      return;
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+
+    const button = dom("batchBtn");
+    button.disabled = true;
+    button.textContent = "Scoring…";
+
+    try {
+      const response = await withLoader(() =>
+        api("/api/predict/demand/batch", { method: "POST", form })
+      );
+
+      batchRows = response.results || [];
+      dom("batchDownload").classList.remove("hidden");
+
+      dom("batchSummary").textContent =
+        `${response.summary.scored} product(s) scored · ` +
+        `${response.summary.skipped} skipped · ` +
+        `${num(response.summary.total_units)} total predicted units`;
+
+      fillTable(
+        "batchBody",
+        batchRows,
+        (row) => `
+          <tr>
+            <td class="mono" title="${escapeHtml(row.product_id)}">${escapeHtml(
+              String(row.product_id).slice(0, 12)
+            )}…</td>
+            <td><span class="badge ${statusBadge(row.status)}">${escapeHtml(
+              row.status
+            )}</span></td>
+            <td>${row.forecast_month ? escapeHtml(monthLabel(row.forecast_month)) : "—"}</td>
+            <td>${row.predicted_quantity === null ? "—" : num(row.predicted_quantity)}</td>
+          </tr>`,
+        "No rows returned."
+      );
+
+      await withLoader(loadHistory);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Score file";
+    }
+  });
+
+  dom("batchDownload").addEventListener("click", () => {
+    downloadCsv(
+      "live_demand_predictions.csv",
+      ["product_id", "status", "history_months", "last_month", "forecast_month", "predicted_quantity"],
+      batchRows.map((row) => [
+        row.product_id,
+        row.status,
+        row.history_months,
+        row.last_month,
+        row.forecast_month,
+        row.predicted_quantity,
+      ])
+    );
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="kpi-grid">
+  <article class="kpi kpi-teal">
+    <div class="kpi-icon">🤖</div>
+    <span class="kpi-label">Trained products</span>
+    <strong class="kpi-value" id="kpiModelProducts">—</strong>
+    <span class="kpi-sub">Per-product demand models</span>
+  </article>
+
+  <article class="kpi kpi-blue">
+    <div class="kpi-icon">🗓️</div>
+    <span class="kpi-label">Model last trained</span>
+    <strong class="kpi-value" id="kpiTrainedAt" style="font-size:20px">—</strong>
+    <span class="kpi-sub">RandomForestRegressor</span>
+  </article>
+
+  <article class="kpi kpi-purple">
+    <div class="kpi-icon">📊</div>
+    <span class="kpi-label">Data through</span>
+    <strong class="kpi-value" id="kpiDataThrough" style="font-size:20px">—</strong>
+    <span class="kpi-sub">Latest month in history</span>
+  </article>
+
+  <article class="kpi kpi-amber">
+    <div class="kpi-icon">🧠</div>
+    <span class="kpi-label">Model features</span>
+    <strong class="kpi-value" id="kpiFeatureCount">—</strong>
+    <span class="kpi-sub" id="kpiFeatures">—</span>
+  </article>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>📦 Product demand outlook</h2>
+      <p id="productMeta">Select a product to view its history and forecast</p>
+    </div>
+    <div class="field panel-head-select">
+      <label for="productSelect">Product</label>
+      <select id="productSelect"></select>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div class="chart-wrap tall"><canvas id="demandChart"></canvas></div>
+  </div>
+</section>
+
+<div class="grid-2-equal">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🔮 Next three months</h2>
+        <p>Batch forecast saved by the training notebook</p>
+      </div>
+    </div>
+    <div class="panel-body flush">
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>Month</th><th>Predicted units</th></tr>
+          </thead>
+          <tbody id="productForecastBody">
+            <tr><td colspan="2"><div class="empty">Select a product…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🧪 Model accuracy</h2>
+        <p>Held-out error by product — lower is better</p>
+      </div>
+    </div>
+    <div class="panel-body flush">
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>Product</th><th>MAE</th><th>RMSE</th></tr>
+          </thead>
+          <tbody id="evaluationBody">
+            <tr><td colspan="3"><div class="empty">Loading scores…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="notice">
+  <strong>How this works:</strong> each product has its own RandomForest model trained on
+  monthly units sold with lag and rolling-average features. For an instant prediction
+  on the newest numbers, use <a href="{{ url_for('views.live') }}">Live Prediction</a>.
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let allHistory = [];
+  let allForecast = [];
+
+  const productLabel = (product) =>
+    `${prettyLabel(product.category)} · last ${num(product.last_units)} units`;
+
+  function renderProduct(productId) {
+    const history = allHistory
+      .filter((row) => row.product_id === productId)
+      .slice(-18);
+    const forecast = allForecast.filter((row) => row.product_id === productId);
+
+    const labels = [
+      ...history.map((row) => monthLabel(row.month)),
+      ...forecast.map((row) => monthLabel(row.forecast_month)),
+    ];
+
+    const actual = [
+      ...history.map((row) => row.quantity_sold),
+      ...forecast.map(() => null),
+    ];
+
+    const projected = history.map(() => null);
+    if (history.length) {
+      projected[history.length - 1] = history[history.length - 1].quantity_sold;
+    }
+    forecast.forEach((row) => projected.push(row.predicted_quantity));
+
+    lineChart(
+      "demandChart",
+      labels,
+      [
+        { label: "Actual demand", data: actual, color: "#0f766e", fill: false },
+        { label: "Forecast", data: projected, color: "#f97316", fill: false },
+      ],
+      { legend: true }
+    );
+
+    fillTable(
+      "productForecastBody",
+      forecast,
+      (row) => `
+        <tr>
+          <td><strong>${escapeHtml(monthLabel(row.forecast_month))}</strong></td>
+          <td>${num(row.predicted_quantity)} units</td>
+        </tr>`,
+      "No forecast for this product."
+    );
+  }
+
+  withLoader(async () => {
+    const [productsResponse, demandResponse] = await Promise.all([
+      api("/api/products"),
+      api("/api/demand"),
+    ]);
+
+    const model = productsResponse.model;
+    setText("kpiModelProducts", num(model.product_count));
+    setText("kpiTrainedAt", model.trained_at);
+    setText("kpiDataThrough", model.data_through);
+    setText("kpiFeatureCount", `${model.features.length} features`);
+    setText("kpiFeatures", model.features.join(" · "));
+
+    allHistory = demandResponse.history || [];
+    allForecast = demandResponse.forecast || [];
+
+    const select = document.getElementById("productSelect");
+    const products = productsResponse.products || [];
+
+    select.innerHTML = products
+      .map(
+        (product) =>
+          `<option value="${escapeHtml(product.product_id)}" title="${escapeHtml(
+            product.product_id
+          )}">${escapeHtml(productLabel(product))}</option>`
+      )
+      .join("");
+
+    const updateMeta = (productId) => {
+      const product = products.find((row) => row.product_id === productId);
+      const meta = document.getElementById("productMeta");
+
+      if (!product) {
+        meta.textContent = "No trained product found.";
+        return;
+      }
+
+      meta.innerHTML = `Category: <strong>${escapeHtml(prettyLabel(product.category))}</strong> · 
+        ${product.months} months of history · latest month
+        <strong>${escapeHtml(monthLabel(product.last_month))}</strong> ·
+        ${num(product.last_units)} units sold`;
+    };
+
+    const onChange = () => {
+      updateMeta(select.value);
+      renderProduct(select.value);
+    };
+
+    select.addEventListener("change", onChange);
+
+    if (products.length) {
+      onChange();
+    } else {
+      document.getElementById("productMeta").textContent =
+        "No products have a trained model yet.";
+    }
+
+    fillTable(
+      "evaluationBody",
+      demandResponse.evaluation || [],
+      (row) => `
+        <tr>
+          <td class="mono" title="${escapeHtml(row.product_id)}">${escapeHtml(
+            String(row.product_id).slice(0, 12)
+          )}…</td>
+          <td>${decimal(row.MAE)}</td>
+          <td>${decimal(row.RMSE)}</td>
+        </tr>`,
+      "No evaluation data available."
+    );
+  });
+</script>
+{% endblock %}

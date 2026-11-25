@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="kpi-grid">
+  <article class="kpi kpi-blue">
+    <div class="kpi-icon">💰</div>
+    <span class="kpi-label">Total revenue</span>
+    <strong class="kpi-value" id="kpiRevenue">—</strong>
+    <span class="kpi-sub" id="kpiRevenueSub">Product sales plus freight</span>
+  </article>
+
+  <article class="kpi kpi-teal">
+    <div class="kpi-icon">🛒</div>
+    <span class="kpi-label">Delivered orders</span>
+    <strong class="kpi-value" id="kpiOrders">—</strong>
+    <span class="kpi-sub">Completed purchases</span>
+  </article>
+
+  <article class="kpi kpi-purple">
+    <div class="kpi-icon">👥</div>
+    <span class="kpi-label">Customers</span>
+    <strong class="kpi-value" id="kpiCustomers">—</strong>
+    <span class="kpi-sub">Unique shoppers analysed</span>
+  </article>
+
+  <article class="kpi kpi-amber">
+    <div class="kpi-icon">📈</div>
+    <span class="kpi-label">Average order value</span>
+    <strong class="kpi-value" id="kpiAov">—</strong>
+    <span class="kpi-sub">Revenue per delivered order</span>
+  </article>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>📈 Revenue trend</h2>
+        <p>Monthly total sales including freight value</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap tall"><canvas id="revenueChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🏷️ Top categories</h2>
+        <p>Product sales by category</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap tall"><canvas id="categoryChart"></canvas></div>
+    </div>
+  </section>
+</div>
+
+<div class="grid-2-equal">
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>💬 Customer sentiment</h2>
+        <p>Predicted sentiment across all reviews</p>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap"><canvas id="sentimentChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>🔮 Forecast demand</h2>
+        <p>Top products, next three months combined</p>
+      </div>
+    </div>
+    <div class="panel-body flush">
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>Month</th><th>Predicted units</th><th>Products</th></tr>
+          </thead>
+          <tbody id="overviewForecastBody">
+            <tr><td colspan="3"><div class="empty">Loading forecast…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>⚡ Quick actions</h2>
+      <p>Jump straight into the workflows your team uses most</p>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div class="form-actions" style="margin-top:0">
+      <a class="btn btn-teal" href="{{ url_for('views.live') }}">🔮 Score live demand</a>
+      <a class="btn btn-ghost" href="{{ url_for('views.demand') }}">📦 Explore product demand</a>
+      <a class="btn btn-ghost" href="{{ url_for('views.sales') }}">💰 View sales analytics</a>
+      <a class="btn btn-ghost" href="{{ url_for('views.customers') }}">👥 Review customer risk</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  withLoader(async () => {
+    const data = await api("/api/overview");
+    const kpis = data.kpis;
+
+    setText("kpiRevenue", money(kpis.revenue));
+    setText("kpiRevenueSub", `Product sales ${money(kpis.product_sales)}`);
+    setText("kpiOrders", num(kpis.orders));
+    setText("kpiCustomers", num(kpis.customers));
+    setText("kpiAov", money(kpis.average_order_value, 2));
+
+    lineChart(
+      "revenueChart",
+      data.monthly_sales.map((row) => monthLabel(row.month)),
+      [{
+        label: "Total sales",
+        data: data.monthly_sales.map((row) => row.total_sales),
+        color: "#4f46e5",
+      }],
+      { currency: true }
+    );
+
+    const categories = data.top_categories.slice(0, 7);
+    barChart(
+      "categoryChart",
+      categories.map((row) => prettyLabel(row.product_category_name_english)),
+      [{
+        label: "Product sales",
+        data: categories.map((row) => row.product_sales),
+        colors: categories.map((_, index) => hexToRgba(PALETTE[index % PALETTE.length], 0.82)),
+      }],
+      { currency: true, horizontal: true, legend: false }
+    );
+
+    const sentiment = data.sentiment || [];
+    doughnutChart(
+      "sentimentChart",
+      sentiment.map((row) => row.sentiment),
+      sentiment.map((row) => row.review_count),
+      {
+        colors: sentiment.map((row) => {
+          const key = String(row.sentiment).toLowerCase();
+          if (key.includes("positive")) return "#10b981";
+          if (key.includes("negative")) return "#f43f5e";
+          return "#f59e0b";
+        }),
+      }
+    );
+
+    const totals = new Map();
+    (data.demand_forecast || []).forEach((row) => {
+      const bucket = totals.get(row.forecast_month) || { units: 0, products: 0 };
+      bucket.units += Number(row.predicted_quantity) || 0;
+      bucket.products += 1;
+      totals.set(row.forecast_month, bucket);
+    });
+
+    fillTable(
+      "overviewForecastBody",
+      [...totals.entries()],
+      ([month, bucket]) => `
+        <tr>
+          <td><strong>${escapeHtml(monthLabel(month))}</strong></td>
+          <td>${num(bucket.units)} units</td>
+          <td><span class="badge badge-blue">${bucket.products} products</span></td>
+        </tr>`,
+      "No forecast data available yet."
+    );
+  });
+</script>
+{% endblock %}
