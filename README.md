@@ -93,3 +93,50 @@ It helps transform raw e-commerce data into meaningful visual insights that can 
 - Improved forecasting models.
 - Automated business reports.
 - Deployment to a cloud platform.
+
+## 11. Deploy to Render
+
+The repository includes a Render Blueprint (`render.yaml`) and a slim
+`requirements-render.txt` for hosting the Flask web app as a managed service.
+
+### One-click Blueprint deploy
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/SurajiRasagna/AI-POWERED-CUSTOMER-AND-BUSINESS-INTELLIGENCE-PLATFORM)
+
+1. Sign in to Render and approve the Blueprint.
+2. Render creates the `ai-customer-bi` web service plus a free Postgres
+   database, then builds and deploys automatically.
+3. Open the service URL and click **Register**. The first account created
+   becomes the admin.
+
+### Manual setup
+
+Create a **Web Service** from this repository and use:
+
+| Setting | Value |
+| --- | --- |
+| Runtime | Python 3 |
+| Build command | `pip install -r requirements-render.txt` |
+| Start command | `gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 run_web:app` |
+| Health check path | `/healthz` |
+
+Environment variables:
+
+- `FLASK_ENV=production`
+- `SECRET_KEY` — a long random string (Render can generate one)
+- `COOKIE_SECURE=1`
+- `DATABASE_URL` — a Postgres connection string (recommended, see below)
+
+### Free-plan caveats
+
+- Free web services have 512 MB RAM and sleep after 15 minutes without
+  traffic; the next request takes about a minute to wake the app.
+- Free services have an ephemeral filesystem. Without `DATABASE_URL` the app
+  falls back to SQLite and **user accounts are lost on every deploy or
+  restart**, which is why the Blueprint provisions Postgres.
+- Free Render Postgres databases **expire 30 days after creation**. Upgrade
+  the database to a paid plan, or recreate it and update `DATABASE_URL`,
+  before then.
+- If the service runs out of memory while loading the larger sentiment CSV,
+  move it to a larger instance plan.
+

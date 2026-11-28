@@ -1,0 +1,49 @@
+# Render Blueprint for the AI Customer & Business Intelligence web app.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Deploy with: https://render.com/deploy?repo=https://github.com/SurajiRasagna/AI-POWERED-CUSTOMER-AND-BUSINESS-INTELLIGENCE-PLATFORM
+#
+# Notes
+# -----
+# * The web service runs on the Free plan: 512 MB RAM, spins down after
+#   15 minutes of inactivity, and its local filesystem is wiped on every
+#   deploy/restart. User accounts therefore live in Postgres, not SQLite.
+# * Render's Free Postgres databases expire 30 days after creation. Upgrade
+#   the database plan (or recreate it) before then. To run without a managed
+#   database, delete the `databases` section and the DATABASE_URL env var;
+#   the app will fall back to SQLite and accounts will reset on redeploy.
+
+services:
+  - type: web
+    name: ai-customer-bi
+    runtime: python
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: pip install --upgrade pip && pip install -r requirements-render.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 --access-logfile - run_web:app
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.10
+      - key: FLASK_ENV
+        value: production
+      # Render generates and stores a strong signing key for sessions/CSRF.
+      - key: SECRET_KEY
+        generateValue: true
+      # Render terminates TLS, so session cookies are HTTPS-only.
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-customer-bi-db
+          property: connectionString
+
+databases:
+  - name: ai-customer-bi-db
+    plan: free
+    region: singapore
+    postgresMajorVersion: "18"
+    # Allow only connections from services in the same Render region.
+    ipAllowList: []

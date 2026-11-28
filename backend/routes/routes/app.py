@@ -4,6 +4,7 @@ Run from the project root with:
     python run_web.py
 """
 
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,7 @@ for entry in (str(HERE), str(BASE_DIR)):
         sys.path.insert(0, entry)
 
 from flask import Flask, g, jsonify, render_template, request  # noqa: E402
+from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 
 import admin  # noqa: E402
 import api  # noqa: E402
@@ -55,6 +57,14 @@ def create_app(config_object=None):
     )
 
     app.config.from_object(config_object or get_config())
+
+    # Render (and most PaaS hosts) terminate TLS at a proxy in front of the
+    # app. Trust one hop of X-Forwarded-* headers so redirects and cookies
+    # see the original HTTPS scheme and host.
+    if os.environ.get("RENDER"):
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app, x_for=1, x_proto=1, x_host=1
+        )
 
     db.init_app(app)
 

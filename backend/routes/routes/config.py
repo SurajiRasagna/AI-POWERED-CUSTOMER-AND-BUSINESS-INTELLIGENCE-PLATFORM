@@ -34,11 +34,27 @@ def _load_secret_key():
     return value
 
 
+def _normalize_database_url(url):
+    """Map hosted database URLs to the SQLAlchemy driver we ship.
+
+    Render/Heroku style URLs use the bare ``postgres://`` or
+    ``postgresql://`` schemes, which SQLAlchemy would route to psycopg2.
+    We install psycopg 3 instead, so pin the driver explicitly.
+    """
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url[len("postgresql://"):]
+    if url.startswith("mysql://"):
+        return "mysql+pymysql://" + url[len("mysql://"):]
+    return url
+
+
 def _database_uri():
-    """Prefer DATABASE_URL (MySQL/Postgres), otherwise SQLite."""
+    """Prefer DATABASE_URL (Postgres/MySQL), otherwise SQLite."""
     env_url = os.environ.get("DATABASE_URL")
     if env_url:
-        return env_url
+        return _normalize_database_url(env_url)
 
     INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
     sqlite_path = (INSTANCE_DIR / "app.db").as_posix()
@@ -56,7 +72,12 @@ class Config:
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    SESSION_COOKIE_SECURE = os.environ.get("COOKIE_SECURE") == "1"
+    # Render sets RENDER=true and always serves HTTPS, so default to secure
+    # cookies there while keeping plain HTTP working for local development.
+    SESSION_COOKIE_SECURE = os.environ.get(
+        "COOKIE_SECURE",
+        "1" if os.environ.get("RENDER") else "0",
+    ) == "1"
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
 
     TEMPLATE_DIR = TEMPLATE_DIR
